@@ -755,14 +755,15 @@ It's flymake process filter."
                  (- (flymake-float-time) flymake-check-start-time))
     (setq flymake-check-start-time nil)
 
-    (if (and (equal 0 err-count) (equal 0 warn-count) (equal 0 info-count))
-        (if (equal 0 exit-status)
-            (flymake-report-status "" "")        ; PASSED
-          (if (not flymake-check-was-interrupted)
-              (flymake-report-fatal-status "CFGERR"
-                                           (format "Configuration error has occurred while running %s" command))
-            (flymake-report-status nil ""))) ; "STOPPED"
-      (flymake-report-status (format "%d/%d/%d" err-count warn-count info-count) "")))
+    ;; (if (and (equal 0 err-count) (equal 0 warn-count) (equal 0 info-count))
+    ;;     (if (equal 0 exit-status)
+    ;;         (flymake-report-status "" "")        ; PASSED
+    ;;       (if (not flymake-check-was-interrupted)
+    ;;           (flymake-report-fatal-status "CFGERR"
+    ;;                                        (format "Configuration error has occurred while running %s" command))
+    ;;         (flymake-report-status nil ""))) ; "STOPPED"
+    ;;   (flymake-report-status (format "%d/%d/%d" err-count warn-count info-count) ""))
+    )
   (run-hooks 'flymake-after-syntax-check-hook))
 
 (defun flymake-parse-output-and-residual (output)
@@ -1058,6 +1059,7 @@ Convert it to flymake internal format."
      ("\\(.+\\): line \\([0-9]+\\), col \\([0-9]+\\), \\(.+\\)" 1 2 3 4)
      ;; LaTeX warnings (fileless) ("\\(LaTeX \\(Warning\\|Error\\): .*\\) on input line \\([0-9]+\\)" 20 3 nil 1)
      ;; gcc after 4.5 (includes column number)
+     ("^.*from\s+\\(.*\\([a-zA-Z]:\\)\\([0-9]+\\)\\)" 1 2 nil nil)
      (" *\\(\\([a-zA-Z]:\\)?[^:(\t\n]+\\)\:\\([0-9]+\\)\:\\([0-9]+\\)\:[ \t\n]*\\(.+\\)"
       1 3 4 5)
      ;; ant/javac, also matches gcc prior to 4.5
@@ -1106,7 +1108,7 @@ Return its components if so, nil otherwise."
       (when (string-match (car (car patterns)) line)
         (let* ((file-idx (nth 1 (car patterns)))
                (line-idx (nth 2 (car patterns))))
-
+          (flymake-log 3 "regexp: %s" (car (car patterns)))
           (setq raw-file-name (if file-idx (match-string file-idx line) nil))
           (setq line-no       (if line-idx (string-to-number (match-string line-idx line)) 0))
           (setq err-text      (if (> (length (car patterns)) 4)
