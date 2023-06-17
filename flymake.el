@@ -37,8 +37,9 @@
 ;;; Code:
 
 (require 'cc-defs)
-(eval-when-compile (require 'cl))
-(eval-when-compile (require 'tramp))
+(require 'cl-lib)
+(require 'tramp)
+
 (if (featurep 'xemacs) (require 'overlay))
 
 (defvar flymake-is-running nil
@@ -46,7 +47,8 @@
 (make-variable-buffer-local 'flymake-is-running)
 
 (defvar flymake-buffers 0
-  "Refcount of number of buffers in Flymake mode, when zero the last-change timer is disabled.")
+  "Refcount of number of buffers in Flymake mode, when zero the last-change timer
+is disabled.")
 
 (defvar flymake-timer nil
   "Timer for starting syntax check.")
@@ -68,7 +70,8 @@
 (make-variable-buffer-local 'flymake-check-should-restart)
 
 (defvar flymake-err-info nil
-  "Sorted list of line numbers and lists of err info in the form (file, err-text).")
+  "Sorted list of line numbers and lists of err info in the form
+(file, err-text).")
 (make-variable-buffer-local 'flymake-err-info)
 
 (defvar flymake-new-err-info nil
@@ -95,6 +98,39 @@ file (and thus on the remote machine), or in the same place as
 `temporary-file-directory' (usually the local machine)."
   :group 'flymake
   :type 'boolean)
+
+(defcustom flymake-log-level -1
+  "Logging level, only messages with level lower or equal will be logged.
+-1 = NONE, 0 = ERROR, 1 = WARNING, 2 = INFO, 3 = DEBUG
+
+   See `flymake-log-file-name' if you want to control where the log is created."
+  :group 'flymake
+  :type 'integer)
+
+;; Yes, this is an awful default.
+(defcustom flymake-log-file-name "~/flymake.log"
+  "Where to put the flymake log if logging is enabled.
+
+   See `flymake-log-level' if you want to control what is logged."
+  :group 'flymake
+  :type 'string)
+
+(defun flymake-log (level text &rest args)
+  "Log a message at level LEVEL.
+If LEVEL is higher than `flymake-log-level', the message is
+ignored.  Otherwise, it is printed using `message'.
+TEXT is a format control string, and the remaining arguments ARGS
+are the string substitutions (see `format')."
+  (if (<= level flymake-log-level)
+      (let* ((msg (apply 'format text args))
+             ;; Surely there's a better way to do this?
+             (time (current-time))
+             (timestamp (concat (format-time-string "%Y-%m-%d %T" time)
+                                "."
+                                (format "%06d" (cl-third time)))))
+        (message "%s" msg)
+        (make-directory (file-name-directory flymake-log-file-name) 1)
+        (write-region (concat "[" timestamp "] " msg "\n") nil flymake-log-file-name t 566))))
 
 ;;;###autoload
 (define-minor-mode flymake-mode
@@ -164,7 +200,7 @@ if ARG is omitted or nil."
       'float-time
     (if (featurep 'xemacs)
         (lambda ()
-          (multiple-value-bind (s0 s1 s2) (values-list (current-time))
+          (cl-multiple-value-bind (s0 s1 s2) (values-list (current-time))
             (+ (* (float (ash 1 16)) s0) (float s1) (* 0.0000001 s2)))))))
 
 (defalias 'flymake-replace-regexp-in-string
@@ -291,42 +327,9 @@ See `x-popup-menu' for the menu specifier format."
 
 ;;;; ]]
 
-(defcustom flymake-log-level -1
-  "Logging level, only messages with level lower or equal will be logged.
--1 = NONE, 0 = ERROR, 1 = WARNING, 2 = INFO, 3 = DEBUG
-
-   See `flymake-log-file-name' if you want to control where the log is created."
-  :group 'flymake
-  :type 'integer)
-
-;; Yes, this is an awful default.
-(defcustom flymake-log-file-name "~/flymake.log"
-  "Where to put the flymake log if logging is enabled.
-
-   See `flymake-log-level' if you want to control what is logged."
-  :group 'flymake
-  :type 'string)
-
 (defun flymake-enquote-log-string (string)
   "Prepends > on each line of STRING."
   (concat "\n  > " (flymake-replace-regexp-in-string "\n" "\n  > " string t t)))
-
-(defun flymake-log (level text &rest args)
-  "Log a message at level LEVEL.
-If LEVEL is higher than `flymake-log-level', the message is
-ignored.  Otherwise, it is printed using `message'.
-TEXT is a format control string, and the remaining arguments ARGS
-are the string substitutions (see `format')."
-  (if (<= level flymake-log-level)
-      (let* ((msg (apply 'format text args))
-             ;; Surely there's a better way to do this?
-             (time (current-time))
-             (timestamp (concat (format-time-string "%Y-%m-%d %T" time)
-                                "."
-                                (format "%06d" (third time)))))
-        (message "%s" msg)
-        (make-directory (file-name-directory flymake-log-file-name) 1)
-        (write-region (concat "[" timestamp "] " msg "\n") nil flymake-log-file-name t 566))))
 
 (defun flymake-ins-after (list pos val)
   "Insert VAL into LIST after position POS."
@@ -734,7 +737,8 @@ It's flymake process filter."
     (flymake-run-next-queued-syntax-check)))
 
 (defcustom flymake-after-syntax-check-hook '()
-  "Hook run each time Flymake completes a syntax check and updates its list of errors."
+  "Hook run each time Flymake completes a syntax check and updates its list of
+errors."
   :type 'hook
   :group 'flymake)
 
@@ -797,9 +801,9 @@ It's flymake process filter."
 (defun flymake-er-get-line-err-info-list (err-info)
   (nth 1 err-info))
 
-(defstruct (flymake-ler
-            (:constructor nil)
-            (:constructor flymake-ler-make-ler (file line type text &optional full-file)))
+(cl-defstruct (flymake-ler
+               (:constructor nil)
+               (:constructor flymake-ler-make-ler (file line type text &optional full-file)))
   file line type text full-file)
 
 (defun flymake-ler-set-file (line-err-info file)
@@ -1086,12 +1090,14 @@ from compile.el")
 ;;)
 
 (defcustom flymake-warn-line-regexp "^[wW]arning"
-  "Regexp pattern for detecting if an error line is of class \"warning\" rather than \"error\"."
+  "Regexp pattern for detecting if an error line is of class \"warning\" rather
+than \"error\"."
   :group 'flymake
   :type 'string)
 
 (defcustom flymake-info-line-regexp "^[iI]nfo"
-  "Regexp pattern for detecting if an error line is of class \"info\" rather than \"error\"."
+  "Regexp pattern for detecting if an error line is of class \"info\" rather
+than \"error\"."
   :group 'flymake
   :type 'string)
 
@@ -1272,20 +1278,24 @@ For the format of LINE-ERR-INFO, see `flymake-ler-make-ler'."
   :type 'boolean)
 
 (defcustom flymake-max-parallel-syntax-checks 4
-  "If non-nil, the maximum number of syntax checks to run in parallel before queuing."
+  "If non-nil, the maximum number of syntax checks to run in parallel before
+queuing."
   :group 'flymake
   :type 'integer)
 
 (defvar flymake-syntax-check-queue ()
-  "Queue of pending buffers to run flymake on if flymake-max-parallel-syntax-checks is exceeded.")
+  "Queue of pending buffers to run flymake on if
+flymake-max-parallel-syntax-checks is exceeded.")
 
 (defun flymake-ready-for-next-syntax-check ()
-  "Returns t if flymake is running less than flymake-max-parallel-syntax-checks checks, nil otherwise."
+  "Returns t if flymake is running less than flymake-max-parallel-syntax-checks
+checks, nil otherwise."
   (or (not flymake-max-parallel-syntax-checks)
       (< (length flymake-processes) flymake-max-parallel-syntax-checks)))
 
 (defun flymake-queue-syntax-check (buffer)
-  "Queue a syntax check on BUFFER to run later once number of parallel runs is low enough."
+  "Queue a syntax check on BUFFER to run later once number of parallel runs is
+low enough."
   (flymake-log 3 "flymake syntax check queued for buffer: %s" buffer)
   ;; For responsiveness to current activity we run as a LIFO stack rather than FIFO pipe
   (setq flymake-syntax-check-queue (delete buffer flymake-syntax-check-queue))
@@ -1315,7 +1325,8 @@ For the format of LINE-ERR-INFO, see `flymake-ler-make-ler'."
     buffer))
 
 (defun flymake-run-next-queued-syntax-check ()
-  "Run the next queued syntax check to run later once number of parallel runs is low enough."
+  "Run the next queued syntax check to run later once number of parallel runs is
+low enough."
   (interactive)
   (when (flymake-ready-for-next-syntax-check)
     (let ((buffer (flymake-pop-next-live-buffer-in-queue)))
@@ -1509,7 +1520,8 @@ Defaults to `current-buffer' if not supplied."
   (count-lines (point-min) (point-max)))
 
 (defun flymake-display-err-menu-for-current-line ()
-  "Display a menu with errors/warnings for current line if it has errors and/or warnings."
+  "Display a menu with errors/warnings for current line if it has errors and/or
+warnings."
   (interactive)
   (let* ((line-no             (flymake-current-line-no))
          (line-err-info-list  (nth 0 (flymake-find-err-info flymake-err-info line-no)))
@@ -1524,7 +1536,8 @@ Defaults to `current-buffer' if not supplied."
       (flymake-log 1 "no errors for line %d" line-no))))
 
 (defun flymake-make-err-menu-data (line-no line-err-info-list)
-  "Make a (menu-title (item-title item-action)*) list with errors/warnings from LINE-ERR-INFO-LIST."
+  "Make a (menu-title (item-title item-action)*) list with errors/warnings from
+LINE-ERR-INFO-LIST."
   (let* ((menu-items  nil))
     (when line-err-info-list
       (let* ((count           (length line-err-info-list))
@@ -1819,7 +1832,8 @@ copy."
                                      temp-dir))))
 
 (defun flymake-delete-temp-directory (dir-name)
-  "Attempt to delete temp dir created by `flymake-create-temp-with-folder-structure', do not fail on error."
+  "Attempt to delete temp dir created by
+`flymake-create-temp-with-folder-structure', do not fail on error."
   (let* ((dir-name (file-truename dir-name))
          (temp-dir (file-truename (flymake-get-temp-dir)))
          (suffix   (substring dir-name (length temp-dir))))
@@ -1845,7 +1859,8 @@ copy."
 (make-variable-buffer-local 'flymake-base-dir)
 
 (defun flymake-init-create-temp-buffer-copy (create-temp-f)
-  "Make a temporary copy of the current buffer, save its name in buffer data and return the name."
+  "Make a temporary copy of the current buffer, save its name in buffer data and
+return the name."
   (let*  ((source-file-name       buffer-file-name)
           (temp-source-file-name  (funcall create-temp-f source-file-name "flymake")))
 
@@ -1935,7 +1950,8 @@ Return full-name.  Names are real, not patched."
                       buildfile-name source-file-name)))))
 
 (defun flymake-init-create-temp-source-and-master-buffer-copy (get-incl-dirs-f create-temp-f master-file-masks include-regexp)
-  "Find master file (or buffer), create its copy along with a copy of the source file."
+  "Find master file (or buffer), create its copy along with a copy of the source
+file."
   (let* ((source-file-name       buffer-file-name)
          (temp-source-file-name  (flymake-init-create-temp-buffer-copy create-temp-f))
          (master-and-temp-master (flymake-create-master-file
